@@ -9,10 +9,16 @@ import sys
 from struct import unpack
 import numpy as np
 import tables
+import re
 
 # TODO
 #
 #   - Add the relevant attributes to the HDF5 file
+#       - measurement units (ds)
+#       - scaling factor (ds)
+#       - missing value (ds)
+#       - subsatellite point (root)
+#       - ...
 #   - Remove the outPath argument from GSA_nat.to_hdf5() and add an outDir.
 #   The output name can be set by the class, based on the input nat file.
 #   - Remove the unneeded attributes from the HDF5 file (the ones 
@@ -63,6 +69,8 @@ class GSANat(object):
             ['RadNoise', None],
             ]
                 
+    OUTPUT_PATTERN = r'g2_BIOPAR_GSA_#_#_GEO_v1'
+
     def __init__(self, filePath):
         fh = open(filePath, 'rb')
         self.natHeader = self._decode_header(fh)
@@ -140,7 +148,18 @@ class GSANat(object):
         headerBytes = fh.read(self.PRODUCT_HEADER['nBytes'])
         formatString = ''.join([f[1] for f in headerFields])
         values = unpack(formatString, headerBytes)
-        return dict(zip([f[0] for f in headerFields], values))
+        cleanValues = self._clean_values(values)
+        return dict(zip([f[0] for f in headerFields], cleanValues))
+
+    def _clean_values(self, values):
+        newValues = []
+        for v in values:
+            if isinstance(v, str):
+                newV = re.sub('\x00', '', v).strip()
+            else:
+                newV = v
+            newValues.append(newV)
+        return newValues
 
     def _decode_data(self, fh):
         fh.seek(self.LINES_PART['start'])
@@ -168,7 +187,11 @@ class GSANat(object):
         '''
 
         h5f = tables.openFile(outPath, mode='w', title='GSA')
+        for k, v in self.natHeader.iteritems():
+            exec('h5f.root._v_attrs.%s = "%s"' % (k, v))
         for dsList in self.datasets:
             name, arr = dsList
-            h5f.createArray('/', name, arr)
+            ds = h5f.createArray('/', name, arr)
+            ds._v_attrs.MISSING_VALUE = 255
+            ds._v_attrs.SCALING_FACTOR = 254
         h5f.close()
