@@ -1,0 +1,4 @@
+This project is about the creation of a Python module to convert the output file of EUMETSAT's Geostationary Surface Albedo (GSA) to the HDF5 format.
+
+GSA output files are saved in a binary native format and this project aims to convert them to the popular HDF5 format so that they can be easily manipulated with HDF5 reding software.
+
