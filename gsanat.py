@@ -255,7 +255,7 @@ class GSANat(object):
         h5f = tables.openFile(outPath, mode='w', title='GSA')
         for k, v in self.natHeader.iteritems():
             exec('h5f.root._v_attrs.%s = "%s"' % (k, v))
-        for k, v in self.HDF5_ATTRIBUTES.iteritems():
+        for k, v in self.hdf5Attributes.iteritems():
             exec('h5f.root._v_attrs.%s = "%s"' % (k, v))
         for dsList in self.DATASETS:
             name, arr, scalingFactor = dsList
