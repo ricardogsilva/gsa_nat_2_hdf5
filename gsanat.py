@@ -43,41 +43,107 @@ class GSANat(object):
             'nBytes' : None
             }
 
-    datasets = [
-            ['BHRiso', None],
-            ['DHR', None],
-            ['QCFlag', None],
-            ['NumSol', None],
-            ['NumInputSlot', None],
-            ['NumberSlotASM', None],
-            ['IdxSurface', None],
-            ['IdxOptical', None],
-            ['R_0', None],
-            ['Err_R_0', None],
-            ['DHRErr_10D', None] ,
-            ['NumDays', None] ,
-            ['BestDayNbr', None],
-            ['Ch2ASM', None],
-            ['Ch2DCP', None],
-            ['ProbIdx', None],
-            ['DHRError', None],
-            ['Err_K', None],
-            ['Err_T', None],
-            ['Err_Tau', None],
-            ['TauAvg', None],
-            ['TauStdErrAvg', None],
-            ['RadNoise', None],
+    DATASETS = [
+            # [datasetName, empty placeholder for the data, scaling factor]
+            ['BHRiso', None, 254],
+            ['DHR', None, 254],
+            ['QCFlag', None, 1],
+            ['NumSol', None, 1],
+            ['NumInputSlot', None, 1],
+            ['NumberSlotASM', None, 1],
+            ['IdxSurface', None, 1],
+            ['IdxOptical', None, 1],
+            ['R_0', None, 254],
+            ['Err_R_0', None, 254],
+            ['DHRErr_10D', None, 1] , # is the scaling factor correct?
+            ['NumDays', None, 1] ,
+            ['BestDayNbr', None, 1],
+            ['Ch2ASM', None, 127],
+            ['Ch2DCP', None, 254],
+            ['ProbIdx', None, 1],
+            ['DHRError', None, 1],
+            ['Err_K', None, 254],
+            ['Err_T', None, 254],
+            ['Err_Tau', None, 254],
+            ['TauAvg', None, 1], # is the scaling factor correct?
+            ['TauStdErrAvg', None, 1], # is the scaling factor correct?
+            ['RadNoise', None, 1], # is the scaling factor correct?
             ]
-                
+
+    __HDF5_ATTRIBUTES = {
+            'SAF'                               : 'GEOLAND2',
+            'CENTRE'                            : 'IM-PT',
+            'ARCHIVE_FACILITY'                  : 'IM-PT',
+            'PRODUCT'                           : 'GSA',
+            'PARENT_PRODUCT_NAME'               : ['-', '-', '-', '-'],
+            'SPECTRAL_CHANNEL_ID'               : 0,
+            'PRODUCT_ALGORITHM_VERSION'         : None, # szMSAVersion value
+            'CLOUD_COVERAGE'                    : '-', 
+            'OVERALL_QUALITY_FLAG'              : 'OK',
+            'ASSOCIATED_QUALITY_INFORMATION'    : '-',
+            'REGION_NAME'                       : None, # satellite area
+            'COMPRESSION'                       : 0,
+            'FIELD_TYPE'                        : 'Product',
+            'FORECAST_STEP'                     : 0,
+            'NC'                                : None, # nCols
+            'NL'                                : None, # nLines
+            'NB_PARAMETERS'                     : len(DATASETS),
+
+            #'NOMINAL_PRODUCT_TIME'              : None, # product generation time
+            #'SATELLITE'  # satelites que contribuiram para o produto (ver tipo de dados esperado)
+            #'INSTRUMENT_ID' # nome dos sensores usados (ver tipo de dados)
+            #'INSTRUMENT_MODE'
+            #'IMAGE_ACQUISITION_TIME' #igual à timeslot do nome do ficheiro (primeira do período)
+            #'ORBIT_TYPE'
+            #'PROJECTION_NAME' #ver num dos produtos intermédios GEOS(-075.0)
+            #'NOMINAL_LONG' # SSP
+            #'NOMINAL_LAT' #0
+            #'CFAC' # acrescentar aos settings do sistema
+            #'LFAC' # acrescentar aos settings do sistema
+            #'COFF' # acrescentar aos settings do sistema
+            #'LOFF' # acrescentar aos settings do sistema
+            #'START_ORBIT_NUMBER'
+            #'END_ORBIT_NUMBER'
+            #'SUB_SATELLITE_POINT_START_LAT'
+            #'SUB_SATELLITE_POINT_START_LON'
+            #'SUB_SATELLITE_POINT_END_LAT'
+            #'SUB_SATELLITE_POINT_END_LON'
+            #'SENSING_START_TIME' # igual à timeslot do nome do ficheiro (primeira do período)
+            #'SENSING_END_TIME' # timeslot do fim do periodo
+            #'PIXEL_SIZE' # acrescentar aos settings do sistema (4KM)
+            #'GRANULE_TYPE'
+            #'PROCESSING_LEVEL' # 03?
+            #'PRODUCT_TYPE' #GEOGSA
+            #'PRODUCT_ACTUAL_SIZE' #tamanho (em bytes) que os dados ocupam
+            #'PROCESSING_MODE'
+            #'DISPOSITION_FLAG'
+            #'TIME_RANGE' #10-day
+            #'STATISTIC_TYPE'
+            #'MEAN_SSLAT'
+            #'MEAN_SSLON'
+            #'PLANNED_CHAN_PROCESSING'
+            #'FIRST_LAT'
+            #'FIRST_LON'
+            }
+
     OUTPUT_PATTERN = r'g2_BIOPAR_GSA_#_#_GEO_v1'
 
     def __init__(self, filePath):
         fh = open(filePath, 'rb')
         self.natHeader = self._decode_header(fh)
         self._decode_data(fh)
+        self.hdf5Attributes = self.__HDF5_ATTRIBUTES.copy()
+        self._update_dynamic_attributes()
         fh.close()
 
+    def _update_dynamic_attributes(self):
+        '''Update the HDF5 attributes based on the input file's info.'''
+
+        pass
+
     def _decode_header(self, fh):
+        '''Decode the nat file's header information.'''
+
         fh.seek(self.PRODUCT_HEADER['start']) # skip the MAIB header
         headerFields = [
                 # Prodct Identification
@@ -166,11 +232,11 @@ class GSANat(object):
         nLines, nCols = self._get_dimensions()
         lineDtype = np.dtype([
             ('header', 'i4', 6), # the line header is repeated twice
-            ('data', 'u1', (nCols, len(self.datasets))),
+            ('data', 'u1', (nCols, len(self.DATASETS))),
             ])
         dataArr = np.fromfile(fh, dtype=lineDtype)
-        for index, dsList in enumerate(self.datasets):
-            self.datasets[index][1] = dataArr['data'][:,:,index]
+        for index, dsList in enumerate(self.DATASETS):
+            self.DATASETS[index][1] = dataArr['data'][:,:,index]
 
     def _get_dimensions(self):
         '''return a tuple with number of lines and columns.'''
@@ -189,9 +255,11 @@ class GSANat(object):
         h5f = tables.openFile(outPath, mode='w', title='GSA')
         for k, v in self.natHeader.iteritems():
             exec('h5f.root._v_attrs.%s = "%s"' % (k, v))
-        for dsList in self.datasets:
-            name, arr = dsList
+        for k, v in self.HDF5_ATTRIBUTES.iteritems():
+            exec('h5f.root._v_attrs.%s = "%s"' % (k, v))
+        for dsList in self.DATASETS:
+            name, arr, scalingFactor = dsList
             ds = h5f.createArray('/', name, arr)
             ds._v_attrs.MISSING_VALUE = 255
-            ds._v_attrs.SCALING_FACTOR = 254
+            ds._v_attrs.SCALING_FACTOR = scalingFactor
         h5f.close()
