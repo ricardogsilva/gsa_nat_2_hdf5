@@ -2,7 +2,8 @@
 #-*- coding: utf-8 -*-
 
 """
-Script's doctring goes here.
+This module provides a class to convert outputs from EUMETSAT's Geostationary 
+Surface Albedo (GSA) algorithm from their native binary format to HDF5.
 """
 
 import sys
@@ -11,21 +12,6 @@ import numpy as np
 import tables
 import re
 import datetime as dt
-
-# TODO
-#
-#   - Add the relevant attributes to the HDF5 file
-#       - measurement units (ds)
-#       - scaling factor (ds)
-#       - missing value (ds)
-#       - subsatellite point (root)
-#       - ...
-#   - Remove the outPath argument from GSA_nat.to_hdf5() and add an outDir.
-#   The output name can be set by the class, based on the input nat file.
-#   - Remove the unneeded attributes from the HDF5 file (the ones 
-#   automatically added by pytables).
-#   - Add this class to the processing lines and incorporate a call to it
-#   in the G2GSA class. It should be called after the run() method.
 
 class GSANat(object):
 
@@ -71,72 +57,13 @@ class GSANat(object):
             ['RadNoise', None, 1], # is the scaling factor correct?
             ]
 
-    __HDF5_ATTRIBUTES = {
-            'SAF'                               : 'GEOLAND2',
-            'CENTRE'                            : 'IM-PT',
-            'ARCHIVE_FACILITY'                  : 'IM-PT',
-            'PRODUCT'                           : 'GSA',
-            'PARENT_PRODUCT_NAME'               : ['-', '-', '-', '-'],
-            'SPECTRAL_CHANNEL_ID'               : 0,
-            'PRODUCT_ALGORITHM_VERSION'         : None, # szMSAVersion value
-            'CLOUD_COVERAGE'                    : '-', 
-            'OVERALL_QUALITY_FLAG'              : 'OK',
-            'ASSOCIATED_QUALITY_INFORMATION'    : '-',
-            'REGION_NAME'                       : None, # satellite area
-            'COMPRESSION'                       : 0,
-            'FIELD_TYPE'                        : 'Product',
-            'FORECAST_STEP'                     : 0,
-            'NC'                                : None, # nCols
-            'NL'                                : None, # nLines
-            'NB_PARAMETERS'                     : len(DATASETS),
-
-            #'NOMINAL_PRODUCT_TIME'              : None, # product generation time
-            #'SATELLITE'  # satelites que contribuiram para o produto (ver tipo de dados esperado)
-            #'INSTRUMENT_ID' # nome dos sensores usados (ver tipo de dados)
-            #'INSTRUMENT_MODE'
-            #'IMAGE_ACQUISITION_TIME' #igual à timeslot do nome do ficheiro (primeira do período)
-            #'ORBIT_TYPE'
-            #'PROJECTION_NAME' #ver num dos produtos intermédios GEOS(-075.0)
-            #'NOMINAL_LONG' # SSP
-            #'NOMINAL_LAT' #0
-            #'CFAC' # acrescentar aos settings do sistema
-            #'LFAC' # acrescentar aos settings do sistema
-            #'COFF' # acrescentar aos settings do sistema
-            #'LOFF' # acrescentar aos settings do sistema
-            #'START_ORBIT_NUMBER'
-            #'END_ORBIT_NUMBER'
-            #'SUB_SATELLITE_POINT_START_LAT'
-            #'SUB_SATELLITE_POINT_START_LON'
-            #'SUB_SATELLITE_POINT_END_LAT'
-            #'SUB_SATELLITE_POINT_END_LON'
-            #'SENSING_START_TIME' # igual à timeslot do nome do ficheiro (primeira do período)
-            #'SENSING_END_TIME' # timeslot do fim do periodo
-            #'PIXEL_SIZE' # acrescentar aos settings do sistema (4KM)
-            #'GRANULE_TYPE'
-            #'PROCESSING_LEVEL' # 03?
-            #'PRODUCT_TYPE' #GEOGSA
-            #'PRODUCT_ACTUAL_SIZE' #tamanho (em bytes) que os dados ocupam
-            #'PROCESSING_MODE'
-            #'DISPOSITION_FLAG'
-            #'TIME_RANGE' #10-day
-            #'STATISTIC_TYPE'
-            #'MEAN_SSLAT'
-            #'MEAN_SSLON'
-            #'PLANNED_CHAN_PROCESSING'
-            #'FIRST_LAT'
-            #'FIRST_LON'
-            }
-
-    OUTPUT_PATTERN = r'g2_BIOPAR_GSA_#_#_GEO_v1'
-
     def __init__(self, filePath):
         self.params = self._extract_params(filePath)
         fh = open(filePath, 'rb')
         self.natHeader = self._decode_header(fh)
         self._decode_data(fh)
-        self.hdf5Attributes = self.__HDF5_ATTRIBUTES.copy()
-        self._update_dynamic_attributes()
         fh.close()
+        self.hdf5Attributes = self._get_hdf5_attrs()
 
     def _extract_params(self, theString):
         '''Extract relevant file parameters from its filename.'''
@@ -151,7 +78,6 @@ class GSANat(object):
             for k, v in items.iteritems():
                 if k in ('ssp', 'year', 'firstDoy', 'lastDoy'):
                     items[k] = int(v)
-                print('%s: %s' % (k, v))
             firstTs = dt.datetime(items['year'], 1, 1) + \
                       dt.timedelta(days=items['firstDoy'] - 1)
             lastTs = firstTs + dt.timedelta(days=items['lastDoy'] - 1)
@@ -160,13 +86,65 @@ class GSANat(object):
                     'source' : items['source'], 'ssp' : items['ssp']}
         return params
 
-    def _update_dynamic_attributes(self):
-        '''Update the HDF5 attributes based on the input file's info.'''
+    def _get_hdf5_attrs(self):
 
-        self.hdf5Attributes['PRODUCT_ALGORITHM_VERSION'] = self.natHeader['szMSAVersion']
         nLines, nCols = self._get_dimensions()
-        self.hdf5Attributes['NL'] = nLines
-        self.hdf5Attributes['NC'] = nCols
+        now = dt.datetime.utcnow()
+        hdf5Attrs = {
+            'SAF'                               : 'GEOLAND2',
+            'CENTRE'                            : 'IM-PT',
+            'ARCHIVE_FACILITY'                  : 'IM-PT',
+            'PRODUCT'                           : 'GSA',
+            'PARENT_PRODUCT_NAME'               : ['-', '-', '-', '-'],
+            'SPECTRAL_CHANNEL_ID'               : 0,
+            'PRODUCT_ALGORITHM_VERSION'         : self.natHeader['szMSAVersion'],
+            'CLOUD_COVERAGE'                    : '-', 
+            'OVERALL_QUALITY_FLAG'              : 'OK',
+            'ASSOCIATED_QUALITY_INFORMATION'    : '-',
+            'REGION_NAME'                       : None, # satellite area
+            'COMPRESSION'                       : 0,
+            'FIELD_TYPE'                        : 'Product',
+            'FORECAST_STEP'                     : 0,
+            'NC'                                : nCols,
+            'NL'                                : nLines,
+            'NB_PARAMETERS'                     : len(self.DATASETS),
+            'NOMINAL_PRODUCT_TIME'              : now.strftime('%Y%m%d%H%M'),
+            'SATELLITE'                         : None, # satelites used (list), get from g2System settings
+            'INSTRUMENT_ID'                     : None, # sensor name, get from g2System settings 
+            'INSTRUMENT_MODE'                   : 'STATIC_VIEW',
+            'IMAGE_ACQUISITION_TIME'            : self.params['firstDay'],
+            'ORBIT_TYPE'                        : 'GEO',
+            'PROJECTION_NAME'                   : None, # 'GEOS(-075.0)', get from g2System settings
+            'NOMINAL_LONG'                      : None, # SSP, get from g2System settings
+            'NOMINAL_LAT'                       : 0.0,
+            'CFAC'                              : None, # get from g2System settings
+            'LFAC'                              : None, # get from g2System settings
+            'COFF'                              : None, # get from g2System settings
+            'LOFF'                              : None, # get from g2System settings
+            'START_ORBIT_NUMBER'                : 0,
+            'END_ORBIT_NUMBER'                  : 0,
+            'SUB_SATELLITE_POINT_START_LAT'     : 0.0,
+            'SUB_SATELLITE_POINT_START_LON'     : 0.0,
+            'SUB_SATELLITE_POINT_END_LAT'       : 0.0,
+            'SUB_SATELLITE_POINT_END_LON'       : 0.0,
+            'SENSING_START_TIME'                : self.params['firstDay'],
+            'SENSING_END_TIME'                  : self.params['lastDay'],
+            'PIXEL_SIZE'                        : None, # get from g2System settings (4KM)
+            'GRANULE_TYPE'                      : 'DP',
+            'PROCESSING_LEVEL'                  : '03', # is this correct?
+            'PRODUCT_TYPE'                      : 'GEOGSA',
+            'PRODUCT_ACTUAL_SIZE'               : nCols * nLines * len(self.DATASETS),
+            'PROCESSING_MODE'                   : 'N', # it would be nice to have this as a dynamic attribute
+            'DISPOSITION_FLAG'                  : 'O', # it would be nice to have this as a dynamic attribute
+            'TIME_RANGE'                        : '10-day',
+            'STATISTIC_TYPE'                    : '-',
+            'MEAN_SSLAT'                        : 0.0,
+            'MEAN_SSLON'                        : 0.0,
+            'PLANNED_CHAN_PROCESSING'           : 0,
+            'FIRST_LAT'                         : 0.0,
+            'FIRST_LON'                         : 0.0,
+            }
+        return hdf5Attrs
 
     def _decode_header(self, fh):
         '''Decode the nat file's header information.'''
