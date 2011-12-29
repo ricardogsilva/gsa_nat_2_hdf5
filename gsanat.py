@@ -10,6 +10,7 @@ from struct import unpack
 import numpy as np
 import tables
 import re
+import datetime as dt
 
 # TODO
 #
@@ -129,6 +130,7 @@ class GSANat(object):
     OUTPUT_PATTERN = r'g2_BIOPAR_GSA_#_#_GEO_v1'
 
     def __init__(self, filePath):
+        self.params = self._extract_params(filePath)
         fh = open(filePath, 'rb')
         self.natHeader = self._decode_header(fh)
         self._decode_data(fh)
@@ -136,10 +138,35 @@ class GSANat(object):
         self._update_dynamic_attributes()
         fh.close()
 
+    def _extract_params(self, theString):
+        '''Extract relevant file parameters from its filename.'''
+
+        patt = re.compile(r'(?P<source>[a-zA-Z]{4})_(?P<ssp>\d{3})_.*' \
+                          '_(?P<year>\d{4})_(?P<firstDoy>\d{3})' \
+                          '_(?P<lastDoy>\d{3})')
+        match = patt.search(theString)
+        params = None
+        if match is not None:
+            items = match.groupdict()
+            for k, v in items.iteritems():
+                if k in ('ssp', 'year', 'firstDoy', 'lastDoy'):
+                    items[k] = int(v)
+                print('%s: %s' % (k, v))
+            firstTs = dt.datetime(items['year'], 1, 1) + \
+                      dt.timedelta(days=items['firstDoy'] - 1)
+            lastTs = firstTs + dt.timedelta(days=items['lastDoy'] - 1)
+            params = {
+                    'firstDay' : firstTs, 'lastDay' : lastTs,
+                    'source' : items['source'], 'ssp' : items['ssp']}
+        return params
+
     def _update_dynamic_attributes(self):
         '''Update the HDF5 attributes based on the input file's info.'''
 
-        pass
+        self.hdf5Attributes['PRODUCT_ALGORITHM_VERSION'] = self.natHeader['szMSAVersion']
+        nLines, nCols = self._get_dimensions()
+        self.hdf5Attributes['NL'] = nLines
+        self.hdf5Attributes['NC'] = nCols
 
     def _decode_header(self, fh):
         '''Decode the nat file's header information.'''
